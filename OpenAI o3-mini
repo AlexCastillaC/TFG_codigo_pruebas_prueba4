@@ -1,0 +1,309 @@
+<?php
+/**
+ * ===================== COMANDOS NECESARIOS =====================
+ * 
+ * 1. Crear el proyecto Laravel:
+ *    composer create-project --prefer-dist laravel/laravel crud-productos
+ * 
+ * 2. Configurar la conexión a la base de datos en el archivo .env:
+ *    DB_CONNECTION=mysql
+ *    DB_HOST=127.0.0.1
+ *    DB_PORT=3306
+ *    DB_DATABASE=nombre_de_tu_base_de_datos
+ *    DB_USERNAME=tu_usuario
+ *    DB_PASSWORD=tu_contraseña
+ * 
+ * 3. Crear el modelo Product y la migración:
+ *    php artisan make:model Product -m
+ * 
+ * 4. Crear el controlador de recursos para productos:
+ *    php artisan make:controller ProductController --resource
+ * 
+ * 5. Ejecutar la migración para crear la tabla:
+ *    php artisan migrate
+ * 
+ * 6. Iniciar el servidor de desarrollo:
+ *    php artisan serve
+ * 
+ * 7. Ver las rutas definidas:
+ *    php artisan route:list
+ * 
+ * =================================================================
+ */
+
+//
+// ===================== Archivo: routes/web.php =====================
+//
+
+use App\Http\Controllers\ProductController;
+use Illuminate\Support\Facades\Route;
+
+Route::resource('products', ProductController::class);
+
+//
+// ===================== Archivo: app/Models/Product.php =====================
+//
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Product extends Model {
+    use HasFactory;
+
+    protected $fillable = ['nombre', 'descripcion', 'precio', 'stock'];
+}
+
+//
+// ===================== Archivo: database/migrations/2025_02_24_000000_create_products_table.php =====================
+// (El nombre del archivo y la fecha son de ejemplo)
+//
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+class CreateProductsTable extends Migration {
+    public function up() {
+        Schema::create('products', function (Blueprint $table) {
+            $table->id();
+            $table->string('nombre');
+            $table->text('descripcion')->nullable();
+            $table->decimal('precio', 8, 2);
+            $table->integer('stock');
+            $table->timestamps();
+        });
+    }
+
+    public function down() {
+        Schema::dropIfExists('products');
+    }
+}
+
+//
+// ===================== Archivo: app/Http/Controllers/ProductController.php =====================
+//
+
+namespace App\Http\Controllers;
+
+use App\Models\Product;
+use Illuminate\Http\Request;
+
+class ProductController extends Controller {
+    // Muestra la lista de productos
+    public function index() {
+        $products = Product::all();
+        return view('products.index', compact('products'));
+    }
+
+    // Muestra el formulario para crear un nuevo producto
+    public function create() {
+        return view('products.create');
+    }
+
+    // Almacena un nuevo producto en la base de datos
+    public function store(Request $request) {
+        $request->validate([
+            'nombre' => 'required',
+            'precio' => 'required|numeric',
+            'stock'  => 'required|integer',
+        ]);
+
+        Product::create($request->all());
+        return redirect()->route('products.index')
+            ->with('success', 'Producto creado correctamente.');
+    }
+
+    // Muestra un producto específico (opcional)
+    public function show(Product $product) {
+        return view('products.show', compact('product'));
+    }
+
+    // Muestra el formulario para editar un producto
+    public function edit(Product $product) {
+        return view('products.edit', compact('product'));
+    }
+
+    // Actualiza el producto en la base de datos
+    public function update(Request $request, Product $product) {
+        $request->validate([
+            'nombre' => 'required',
+            'precio' => 'required|numeric',
+            'stock'  => 'required|integer',
+        ]);
+
+        $product->update($request->all());
+        return redirect()->route('products.index')
+            ->with('success', 'Producto actualizado correctamente.');
+    }
+
+    // Elimina el producto de la base de datos
+    public function destroy(Product $product) {
+        $product->delete();
+        return redirect()->route('products.index')
+            ->with('success', 'Producto eliminado correctamente.');
+    }
+}
+
+//
+// ===================== Archivo: resources/views/layouts/app.blade.php =====================
+//
+
+?>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CRUD de Productos</title>
+    <!-- Bootstrap CSS (CDN) -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <?php echo $__env->yieldContent('content'); ?>
+    <!-- Bootstrap JS (opcional) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
+<?php
+
+//
+// ===================== Archivo: resources/views/products/index.blade.php =====================
+//
+
+?>
+@extends('layouts.app')
+
+@section('content')
+<div class="container">
+    <h1 class="my-4">Listado de Productos</h1>
+    <a href="{{ route('products.create') }}" class="btn btn-primary mb-3">Crear Producto</a>
+    
+    @if(session('success'))
+        <div class="alert alert-success">{{ session('success') }}</div>
+    @endif
+
+    <table class="table table-bordered">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Nombre</th>
+                <th>Precio</th>
+                <th>Stock</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach($products as $product)
+            <tr>
+                <td>{{ $product->id }}</td>
+                <td>{{ $product->nombre }}</td>
+                <td>{{ $product->precio }}</td>
+                <td>{{ $product->stock }}</td>
+                <td>
+                    <a href="{{ route('products.edit', $product->id) }}" class="btn btn-warning btn-sm">Editar</a>
+                    <form action="{{ route('products.destroy', $product->id) }}" method="POST" style="display:inline;">
+                        @csrf
+                        @method('DELETE')
+                        <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('¿Seguro de eliminar?')">Eliminar</button>
+                    </form>
+                </td>
+            </tr>
+            @endforeach
+        </tbody>
+    </table>
+</div>
+@endsection
+<?php
+
+//
+// ===================== Archivo: resources/views/products/create.blade.php =====================
+//
+
+?>
+@extends('layouts.app')
+
+@section('content')
+<div class="container">
+    <h1 class="my-4">Crear Producto</h1>
+
+    @if($errors->any())
+        <div class="alert alert-danger">
+            <ul>
+                @foreach($errors->all() as $error)
+                  <li>{{ $error }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
+
+    <form action="{{ route('products.store') }}" method="POST">
+        @csrf
+        <div class="form-group mb-3">
+            <label for="nombre">Nombre</label>
+            <input type="text" name="nombre" class="form-control" required>
+        </div>
+        <div class="form-group mb-3">
+            <label for="descripcion">Descripción</label>
+            <textarea name="descripcion" class="form-control"></textarea>
+        </div>
+        <div class="form-group mb-3">
+            <label for="precio">Precio</label>
+            <input type="number" step="0.01" name="precio" class="form-control" required>
+        </div>
+        <div class="form-group mb-3">
+            <label for="stock">Stock</label>
+            <input type="number" name="stock" class="form-control" required>
+        </div>
+        <button type="submit" class="btn btn-success">Guardar</button>
+    </form>
+</div>
+@endsection
+<?php
+
+//
+// ===================== Archivo: resources/views/products/edit.blade.php =====================
+//
+
+?>
+@extends('layouts.app')
+
+@section('content')
+<div class="container">
+    <h1 class="my-4">Editar Producto</h1>
+
+    @if($errors->any())
+        <div class="alert alert-danger">
+            <ul>
+                @foreach($errors->all() as $error)
+                  <li>{{ $error }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
+
+    <form action="{{ route('products.update', $product->id) }}" method="POST">
+        @csrf
+        @method('PUT')
+        <div class="form-group mb-3">
+            <label for="nombre">Nombre</label>
+            <input type="text" name="nombre" class="form-control" value="{{ $product->nombre }}" required>
+        </div>
+        <div class="form-group mb-3">
+            <label for="descripcion">Descripción</label>
+            <textarea name="descripcion" class="form-control">{{ $product->descripcion }}</textarea>
+        </div>
+        <div class="form-group mb-3">
+            <label for="precio">Precio</label>
+            <input type="number" step="0.01" name="precio" class="form-control" value="{{ $product->precio }}" required>
+        </div>
+        <div class="form-group mb-3">
+            <label for="stock">Stock</label>
+            <input type="number" name="stock" class="form-control" value="{{ $product->stock }}" required>
+        </div>
+        <button type="submit" class="btn btn-success">Actualizar</button>
+    </form>
+</div>
+@endsection
+
