@@ -1,0 +1,419 @@
+<?php
+// Estructura del proyecto
+
+// 1. Configuración inicial
+// Instalar Laravel: composer create-project laravel/laravel chat-system
+// Navegar al directorio: cd chat-system
+
+// 2. Crear las migraciones para las tablas
+
+// Migración para salas de chat (chat_rooms)
+// php artisan make:migration create_chat_rooms_table
+// database/migrations/xxxx_xx_xx_create_chat_rooms_table.php
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+class CreateChatRoomsTable extends Migration
+{
+    public function up()
+    {
+        Schema::create('chat_rooms', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->text('description')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    public function down()
+    {
+        Schema::dropIfExists('chat_rooms');
+    }
+}
+
+// Migración para mensajes (messages)
+// php artisan make:migration create_messages_table
+// database/migrations/xxxx_xx_xx_create_messages_table.php
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+class CreateMessagesTable extends Migration
+{
+    public function up()
+    {
+        Schema::create('messages', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('chat_room_id')->constrained()->onDelete('cascade');
+            $table->string('username');
+            $table->text('content');
+            $table->timestamps();
+        });
+    }
+
+    public function down()
+    {
+        Schema::dropIfExists('messages');
+    }
+}
+
+// 3. Crear los modelos
+// php artisan make:model ChatRoom
+// app/Models/ChatRoom.php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class ChatRoom extends Model
+{
+    use HasFactory;
+    
+    protected $fillable = ['name', 'description'];
+    
+    public function messages()
+    {
+        return $this->hasMany(Message::class);
+    }
+}
+
+// php artisan make:model Message
+// app/Models/Message.php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Message extends Model
+{
+    use HasFactory;
+    
+    protected $fillable = ['chat_room_id', 'username', 'content'];
+    
+    public function chatRoom()
+    {
+        return $this->belongsTo(ChatRoom::class);
+    }
+}
+
+// 4. Crear los controladores
+// php artisan make:controller ChatRoomController
+// app/Http/Controllers/ChatRoomController.php
+namespace App\Http\Controllers;
+
+use App\Models\ChatRoom;
+use Illuminate\Http\Request;
+
+class ChatRoomController extends Controller
+{
+    public function index()
+    {
+        $chatRooms = ChatRoom::all();
+        return view('chat_rooms.index', compact('chatRooms'));
+    }
+    
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'description' => 'nullable|string',
+        ]);
+        
+        ChatRoom::create($validated);
+        
+        return redirect()->route('chat_rooms.index');
+    }
+    
+    public function show(ChatRoom $chatRoom)
+    {
+        $messages = $chatRoom->messages()->orderBy('created_at', 'asc')->get();
+        return view('chat_rooms.show', compact('chatRoom', 'messages'));
+    }
+}
+
+// php artisan make:controller MessageController
+// app/Http/Controllers/MessageController.php
+namespace App\Http\Controllers;
+
+use App\Models\Message;
+use App\Models\ChatRoom;
+use Illuminate\Http\Request;
+
+class MessageController extends Controller
+{
+    public function store(Request $request, ChatRoom $chatRoom)
+    {
+        $validated = $request->validate([
+            'username' => 'required|string|max:255',
+            'content' => 'required|string',
+        ]);
+        
+        $message = new Message([
+            'username' => $validated['username'],
+            'content' => $validated['content'],
+        ]);
+        
+        $chatRoom->messages()->save($message);
+        
+        if ($request->ajax()) {
+            return response()->json(['success' => true, 'message' => $message]);
+        }
+        
+        return redirect()->route('chat_rooms.show', $chatRoom);
+    }
+    
+    public function getMessages(ChatRoom $chatRoom)
+    {
+        $messages = $chatRoom->messages()->orderBy('created_at', 'asc')->get();
+        return response()->json($messages);
+    }
+}
+
+// 5. Definir las rutas
+// routes/web.php
+use App\Http\Controllers\ChatRoomController;
+use App\Http\Controllers\MessageController;
+use Illuminate\Support\Facades\Route;
+
+Route::get('/', [ChatRoomController::class, 'index'])->name('chat_rooms.index');
+Route::post('/chat-rooms', [ChatRoomController::class, 'store'])->name('chat_rooms.store');
+Route::get('/chat-rooms/{chatRoom}', [ChatRoomController::class, 'show'])->name('chat_rooms.show');
+
+Route::post('/chat-rooms/{chatRoom}/messages', [MessageController::class, 'store'])->name('messages.store');
+Route::get('/chat-rooms/{chatRoom}/messages', [MessageController::class, 'getMessages'])->name('messages.get');
+
+// 6. Crear las vistas
+// resources/views/layouts/app.blade.php
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Chat - Laravel</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .chat-container {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 5px;
+            background-color: #f1f1f1;
+        }
+        .message .username {
+            font-weight: bold;
+            margin-bottom: 2px;
+        }
+        .message .time {
+            font-size: 0.8em;
+            color: #777;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
+        <div class="container">
+            <a class="navbar-brand" href="{{ route('chat_rooms.index') }}">Chat System</a>
+        </div>
+    </nav>
+    
+    <div class="container">
+        @yield('content')
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    @yield('scripts')
+</body>
+</html>
+
+// resources/views/chat_rooms/index.blade.php
+@extends('layouts.app')
+
+@section('content')
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h3>Salas de Chat</h3>
+                </div>
+                <div class="card-body">
+                    <ul class="list-group">
+                        @foreach($chatRooms as $room)
+                            <li class="list-group-item">
+                                <a href="{{ route('chat_rooms.show', $room) }}">
+                                    {{ $room->name }}
+                                </a>
+                                <p class="text-muted small">{{ $room->description }}</p>
+                            </li>
+                        @endforeach
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h3>Crear Nueva Sala</h3>
+                </div>
+                <div class="card-body">
+                    <form action="{{ route('chat_rooms.store') }}" method="POST">
+                        @csrf
+                        <div class="mb-3">
+                            <label for="name" class="form-label">Nombre</label>
+                            <input type="text" class="form-control" id="name" name="name" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="description" class="form-label">Descripción</label>
+                            <textarea class="form-control" id="description" name="description" rows="3"></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Crear Sala</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+@endsection
+
+// resources/views/chat_rooms/show.blade.php
+@extends('layouts.app')
+
+@section('content')
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h3>{{ $chatRoom->name }}</h3>
+                    <a href="{{ route('chat_rooms.index') }}" class="btn btn-sm btn-secondary">Volver a Salas</a>
+                </div>
+                <div class="card-body">
+                    <p>{{ $chatRoom->description }}</p>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <h4>Chat</h4>
+                </div>
+                <div class="card-body">
+                    <div class="chat-container" id="chat-container">
+                        @foreach($messages as $message)
+                            <div class="message">
+                                <div class="username">{{ $message->username }}</div>
+                                <div class="content">{{ $message->content }}</div>
+                                <div class="time">{{ $message->created_at->format('H:i:s d/m/Y') }}</div>
+                            </div>
+                        @endforeach
+                    </div>
+                    
+                    <form id="message-form">
+                        <div class="mb-3">
+                            <label for="username" class="form-label">Tu nombre</label>
+                            <input type="text" class="form-control" id="username" name="username" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="content" class="form-label">Mensaje</label>
+                            <textarea class="form-control" id="content" name="content" rows="2" required></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Enviar</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+@endsection
+
+@section('scripts')
+<script>
+    $(document).ready(function() {
+        // Scroll al final del chat
+        function scrollToBottom() {
+            var chatContainer = $('#chat-container');
+            chatContainer.scrollTop(chatContainer[0].scrollHeight);
+        }
+        
+        scrollToBottom();
+        
+        // Manejar el envío de mensaje
+        $('#message-form').on('submit', function(e) {
+            e.preventDefault();
+            
+            var username = $('#username').val();
+            var content = $('#content').val();
+            
+            if (!username || !content) {
+                return;
+            }
+            
+            $.ajax({
+                url: '{{ route("messages.store", $chatRoom) }}',
+                type: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}',
+                    username: username,
+                    content: content
+                },
+                success: function(response) {
+                    if (response.success) {
+                        // Añadir mensaje a la vista
+                        var message = response.message;
+                        var messageHtml = '<div class="message">' +
+                            '<div class="username">' + message.username + '</div>' +
+                            '<div class="content">' + message.content + '</div>' +
+                            '<div class="time">' + new Date().toLocaleTimeString() + ' ' + new Date().toLocaleDateString() + '</div>' +
+                            '</div>';
+                        
+                        $('#chat-container').append(messageHtml);
+                        $('#content').val('');
+                        scrollToBottom();
+                    }
+                }
+            });
+        });
+        
+        // Función para cargar mensajes (simular actualización sin tiempo real)
+        function loadMessages() {
+            $.ajax({
+                url: '{{ route("messages.get", $chatRoom) }}',
+                type: 'GET',
+                success: function(messages) {
+                    $('#chat-container').empty();
+                    
+                    messages.forEach(function(message) {
+                        var date = new Date(message.created_at);
+                        var messageHtml = '<div class="message">' +
+                            '<div class="username">' + message.username + '</div>' +
+                            '<div class="content">' + message.content + '</div>' +
+                            '<div class="time">' + date.toLocaleTimeString() + ' ' + date.toLocaleDateString() + '</div>' +
+                            '</div>';
+                        
+                        $('#chat-container').append(messageHtml);
+                    });
+                    
+                    scrollToBottom();
+                }
+            });
+        }
+        
+        // Botón para actualizar chat manualmente (ya que no es en tiempo real)
+        $('<button>')
+            .addClass('btn btn-outline-secondary mt-3')
+            .text('Actualizar Chat')
+            .on('click', function() {
+                loadMessages();
+            })
+            .insertAfter('#message-form');
+    });
+</script>
+@endsection
+
+
+
