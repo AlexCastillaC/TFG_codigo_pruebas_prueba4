@@ -1,0 +1,71 @@
+#rutas
+
+Route::get('/messages', 'App\Http\Controllers\MessagesController@index')->name('messages.index'); // Display all messages
+Route::post('/messages', 'App\Http\Controllers\MessagesController@store')->name('messages.store'); // Store a new message
+
+#vistas
+<div>
+    @foreach ($messages as $message)
+        <p>{{ $message->content }}</p>
+    @endforeach
+</div>
+
+<form action="{{ route('messages.store') }}" method="POST">
+    @csrf
+    <input type="text" name="content">
+    <button type="submit">Send</button>
+</form>
+
+#migracion
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Message extends Model
+{
+    protected $fillable = [
+        'content',
+    ];
+}
+
+#modelo
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Message extends Model
+{
+    protected $fillable = [
+        'content',
+    ];
+}
+
+#controlador
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use App\Models\Message;
+
+class MessagesController extends Controller
+{
+    // Display all messages
+    public function index()
+    {
+        $messages = Message::all();
+        return view('messages.index', ['messages' => $messages]);
+    }
+
+    // Store a new message
+    public function store(Request $request)
+    {
+        Message::create($request->only('content'));
+        return redirect()->route('messages.index');
+    }
+}
+
