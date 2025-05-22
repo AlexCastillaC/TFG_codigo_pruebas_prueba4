@@ -1,0 +1,122 @@
+<?php
+
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\ChatController;
+use App\Http\Controllers\RoomController;
+
+Route::get('/', function () {
+    return view('welcome');
+});
+
+Route::get('/rooms', [RoomController::class, 'index'])->name('rooms.index');
+Route::get('/rooms/{room}', [RoomController::class, 'show'])->name('rooms.show');
+Route::post('/rooms', [RoomController::class, 'store'])->name('rooms.store');
+Route::post('/rooms/{room}/messages', [ChatController::class, 'store'])->name('messages.store');
+
+// Model: Room.php
+namespace App\Models;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+class Room extends Model {
+    use HasFactory;
+    protected $fillable = ['name'];
+    public function messages() {
+        return $this->hasMany(Message::class);
+    }
+}
+
+// Model: Message.php
+namespace App\Models;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+class Message extends Model {
+    use HasFactory;
+    protected $fillable = ['room_id', 'content'];
+    public function room() {
+        return $this->belongsTo(Room::class);
+    }
+}
+
+// Migration: create_rooms_table.php
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+class CreateRoomsTable extends Migration {
+    public function up() {
+        Schema::create('rooms', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->timestamps();
+        });
+    }
+    public function down() {
+        Schema::dropIfExists('rooms');
+    }
+}
+
+// Migration: create_messages_table.php
+class CreateMessagesTable extends Migration {
+    public function up() {
+        Schema::create('messages', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('room_id')->constrained()->onDelete('cascade');
+            $table->text('content');
+            $table->timestamps();
+        });
+    }
+    public function down() {
+        Schema::dropIfExists('messages');
+    }
+}
+
+// Controller: RoomController.php
+namespace App\Http\Controllers;
+use Illuminate\Http\Request;
+use App\Models\Room;
+class RoomController extends Controller {
+    public function index() {
+        $rooms = Room::all();
+        return view('rooms.index', compact('rooms'));
+    }
+    public function show(Room $room) {
+        return view('rooms.show', compact('room'));
+    }
+    public function store(Request $request) {
+        Room::create($request->validate(['name' => 'required']));
+        return redirect()->route('rooms.index');
+    }
+}
+
+// Controller: ChatController.php
+class ChatController extends Controller {
+    public function store(Request $request, Room $room) {
+        $room->messages()->create($request->validate(['content' => 'required']));
+        return redirect()->route('rooms.show', $room);
+    }
+}
+
+// Views:
+// resources/views/rooms/index.blade.php
+{{-- <h1>Chat Rooms</h1>
+<form method="POST" action="{{ route('rooms.store') }}">
+    @csrf
+    <input type="text" name="name" placeholder="Room Name" required>
+    <button type="submit">Create Room</button>
+</form>
+@foreach($rooms as $room)
+    <div>
+        <a href="{{ route('rooms.show', $room) }}">{{ $room->name }}</a>
+    </div>
+@endforeach --}}
+
+// resources/views/rooms/show.blade.php
+{{-- <h1>{{ $room->name }}</h1>
+@foreach($room->messages as $message)
+    <p>{{ $message->content }}</p>
+@endforeach
+<form method="POST" action="{{ route('messages.store', $room) }}">
+    @csrf
+    <input type="text" name="content" placeholder="Type a message..." required>
+    <button type="submit">Send</button>
+</form> --}}
+
