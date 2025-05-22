@@ -1,0 +1,270 @@
+#vistas
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ $room->name }}</title>
+</head>
+<body>
+    <h1>Sala: {{ $room->name }}</h1>
+
+    <div id="messages">
+        @foreach($messages as $message)
+            <p><strong>{{ $message->user_name }}:</strong> {{ $message->message }}</p>
+        @endforeach
+    </div>
+
+    <form action="{{ route('rooms.messages.store', $room) }}" method="POST">
+        @csrf
+        <label for="user_name">Nombre de Usuario:</label>
+        <input type="text" id="user_name" name="user_name" required>
+        <br><br>
+        <label for="message">Mensaje:</label>
+        <textarea id="message" name="message" rows="4" cols="50" required></textarea>
+        <button type="submit">Enviar Mensaje</button>
+    </form>
+
+    <a href="{{ route('rooms.index') }}">Volver a las salas</a>
+</body>
+</html>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Salas de Chat</title>
+</head>
+<body>
+    <h1>Salas de Chat</h1>
+    <ul>
+        @foreach($rooms as $room)
+            <li><a href="{{ route('rooms.show', $room) }}">{{ $room->name }}</a></li>
+        @endforeach
+    </ul>
+    <a href="{{ route('rooms.create') }}">Crear Nueva Sala</a>
+</body>
+</html>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Crear Sala</title>
+</head>
+<body>
+    <h1>Crear Sala de Chat</h1>
+    <form action="{{ route('rooms.store') }}" method="POST">
+        @csrf
+        <label for="name">Nombre de la sala:</label>
+        <input type="text" id="name" name="name" required>
+        <button type="submit">Crear Sala</button>
+    </form>
+</body>
+</html>
+
+#modelos
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Room extends Model
+{
+    use HasFactory;
+
+    protected $fillable = ['name'];
+
+    /**
+     * Get the messages for the room.
+     */
+    public function messages()
+    {
+        return $this->hasMany(Message::class);
+    }
+}
+
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Message extends Model
+{
+    use HasFactory;
+
+    protected $fillable = ['user_name', 'message'];
+
+    /**
+     * Get the room that owns the message.
+     */
+    public function room()
+    {
+        return $this->belongsTo(Room::class);
+    }
+}
+
+
+#rutas
+<?php
+
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\ProductoController;
+
+Route::get('/', function () {
+    return view('welcome');
+});
+
+Route::resource('producto', ProductoController::class);
+
+use App\Http\Controllers\RoomController;
+use App\Http\Controllers\MessageController;
+
+Route::resource('rooms', RoomController::class);
+Route::post('/rooms/{room}/messages', [RoomController::class, 'storeMessage'])->name('rooms.messages.store');
+
+#Controladores
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+
+use App\Models\Message;
+
+class MessageController extends Controller
+{
+    public function store(Request $request, Room $room)
+    {
+        $message = $room->messages()->create([
+            'user_name' => $request->user_name,
+            'message' => $request->message,
+        ]);
+
+        return redirect()->route('rooms.show', $room);
+    }
+}
+
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use App\Models\Room;
+
+class RoomController extends Controller
+{
+    public function index()
+    {
+        $rooms = Room::all();
+        return view('rooms.index', compact('rooms'));
+    }
+
+    public function create()
+    {
+        return view('rooms.create');
+    }
+
+    public function store(Request $request)
+    {
+        $room = Room::create([
+            'name' => $request->name,
+        ]);
+
+        return redirect()->route('rooms.show', $room);
+    }
+
+    public function storeMessage(Request $request, Room $room)
+    {
+        // Validación de los datos del formulario
+        $validatedData = $request->validate([
+            'user_name' => 'required|string|max:255',
+            'message' => 'required|string',
+        ]);
+
+        // Crear y guardar el mensaje en la base de datos
+        $message = $room->messages()->create($validatedData);
+
+        // Redirigir a la vista de la sala con un mensaje de éxito
+        return redirect()->route('rooms.show', $room)->with('success', 'Mensaje enviado exitosamente.');
+    }
+
+    /**
+     * Muestra una sala específica y sus mensajes.
+     *
+     * @param  \App\Models\Room  $room
+     * @return \Illuminate\Http\Response
+     */
+    public function show(Room $room)
+    {
+        // Obtener todos los mensajes de la sala
+        $messages = $room->messages()->latest()->get();
+
+        return view('rooms.show', compact('room', 'messages'));
+    }
+}
+
+
+#migraciones
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('chat_rooms', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('chat_rooms');
+    }
+};
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('messages', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('chat_room_id')->constrained()->onDelete('cascade');
+            $table->text('message');
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('messages');
+    }
+};
+
