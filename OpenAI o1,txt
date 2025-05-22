@@ -1,0 +1,328 @@
+<?php// -----------------------------------------------------------------------------
+// 1. Comandos para iniciar el proyecto Laravel
+// -----------------------------------------------------------------------------
+// 1) Instala Laravel o crea un proyecto nuevo:
+//    composer create-project laravel/laravel chat-laravel
+
+// 2) Entra en el directorio del proyecto:
+//    cd chat-laravel
+
+// 3) Configura tu archivo .env con tus credenciales de base de datos.
+// 4) Ejecuta php artisan migrate para crear las tablas que vienen por defecto (users, etc.).
+
+// -----------------------------------------------------------------------------
+// 2. Migraciones para chat_rooms y messages
+// -----------------------------------------------------------------------------
+
+// 2.1. create_chat_rooms_table.php
+
+/*
+php artisan make:migration create_chat_rooms_table
+
+Contenido:
+
+public function up()
+{
+    Schema::create('chat_rooms', function (Blueprint $table) {
+        $table->id();
+        $table->string('name');
+        $table->timestamps();
+    });
+}
+
+public function down()
+{
+    Schema::dropIfExists('chat_rooms');
+}
+*/
+
+// 2.2. create_messages_table.php
+
+/*
+php artisan make:migration create_messages_table
+
+Contenido:
+
+public function up()
+{
+    Schema::create('messages', function (Blueprint $table) {
+        $table->id();
+        $table->unsignedBigInteger('chat_room_id');
+        $table->unsignedBigInteger('user_id');
+        $table->text('content');
+        $table->timestamps();
+
+        $table->foreign('chat_room_id')->references('id')->on('chat_rooms')->onDelete('cascade');
+        $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
+    });
+}
+
+public function down()
+{
+    Schema::dropIfExists('messages');
+}
+*/
+
+// 2.3. Corre las migraciones
+// php artisan migrate
+
+// -----------------------------------------------------------------------------
+// 3. Modelos ChatRoom y Message
+// -----------------------------------------------------------------------------
+
+// app/Models/ChatRoom.php
+/*
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class ChatRoom extends Model
+{
+    use HasFactory;
+
+    protected $fillable = ['name'];
+
+    public function messages()
+    {
+        return $this->hasMany(Message::class);
+    }
+}
+*/
+
+// app/Models/Message.php
+/*
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Message extends Model
+{
+    use HasFactory;
+
+    protected $fillable = ['chat_room_id', 'user_id', 'content'];
+
+    public function chatRoom()
+    {
+        return $this->belongsTo(ChatRoom::class);
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+}
+*/
+
+// -----------------------------------------------------------------------------
+// 4. Controladores ChatRoomController y MessageController
+// -----------------------------------------------------------------------------
+
+// 4.1. ChatRoomController
+/*
+php artisan make:controller ChatRoomController
+
+Contenido:
+
+namespace App\Http\Controllers;
+
+use App\Models\ChatRoom;
+use Illuminate\Http\Request;
+
+class ChatRoomController extends Controller
+{
+    public function index()
+    {
+        $rooms = ChatRoom::all();
+        return view('chatrooms.index', compact('rooms'));
+    }
+
+    public function create()
+    {
+        return view('chatrooms.create');
+    }
+
+    public function store(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+        ]);
+
+        ChatRoom::create([
+            'name' => $request->name
+        ]);
+
+        return redirect()->route('chatrooms.index')
+                         ->with('success', 'Sala creada exitosamente.');
+    }
+
+    public function show($id)
+    {
+        $room = ChatRoom::findOrFail($id);
+        $messages = $room->messages()->with('user')->get();
+        return view('chatrooms.show', compact('room', 'messages'));
+    }
+}
+*/
+
+// 4.2. MessageController
+/*
+php artisan make:controller MessageController
+
+Contenido:
+
+namespace App\Http\Controllers;
+
+use App\Models\Message;
+use App\Models\ChatRoom;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+
+class MessageController extends Controller
+{
+    public function store(Request $request, $roomId)
+    {
+        $request->validate([
+            'content' => 'required|string'
+        ]);
+
+        $userId = Auth::id() ?? 1;
+
+        Message::create([
+            'chat_room_id' => $roomId,
+            'user_id'      => $userId,
+            'content'      => $request->content
+        ]);
+
+        return redirect()->route('chatrooms.show', $roomId)
+                         ->with('success', 'Mensaje enviado.');
+    }
+}
+*/
+
+// -----------------------------------------------------------------------------
+// 5. Rutas en routes/web.php
+// -----------------------------------------------------------------------------
+/*
+use App\Http\Controllers\ChatRoomController;
+use App\Http\Controllers\MessageController;
+
+Route::get('/chatrooms', [ChatRoomController::class, 'index']) -> name('chatrooms.index');
+Route::get('/chatrooms/create', [ChatRoomController::class, 'create']) -> name('chatrooms.create');
+Route::post('/chatrooms', [ChatRoomController::class, 'store']) -> name('chatrooms.store');
+
+Route::get('/chatrooms/{id}', [ChatRoomController::class, 'show']) -> name('chatrooms.show');
+
+Route::post('/chatrooms/{id}/messages', [MessageController::class, 'store']) -> name('messages.store');
+*/
+
+// -----------------------------------------------------------------------------
+// 6. Vistas Blade
+// -----------------------------------------------------------------------------
+
+// 6.1. resources/views/layouts/app.blade.php
+/*
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Chat Laravel</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 1rem;
+        }
+    </style>
+</head>
+<body>
+    @yield('content')
+</body>
+</html>
+*/
+
+// 6.2. resources/views/chatrooms/index.blade.php
+/*
+@extends('layouts.app')
+
+@section('content')
+    <h1>Salas de Chat</h1>
+
+    @if(session('success'))
+        <div style="color: green;">
+            {{ session('success') }}
+        </div>
+    @endif
+
+    <ul>
+        @foreach($rooms as $room)
+            <li>
+                <a href="{{ route('chatrooms.show', $room->id) }}">{{ $room->name }}</a>
+            </li>
+        @endforeach
+    </ul>
+
+    <h2>Crear nueva sala</h2>
+    <form action="{{ route('chatrooms.store') }}" method="POST">
+        @csrf
+        <input type="text" name="name" placeholder="Nombre de la sala" required>
+        <button type="submit">Crear</button>
+    </form>
+@endsection
+*/
+
+// 6.3. resources/views/chatrooms/show.blade.php
+/*
+@extends('layouts.app')
+
+@section('content')
+    <h1>Sala: {{ $room->name }}</h1>
+
+    @if(session('success'))
+        <div style="color: green;">
+            {{ session('success') }}
+        </div>
+    @endif
+
+    <ul>
+        @forelse($messages as $message)
+            <li>
+                <strong>{{ $message->user->name ?? 'Usuario ' . $message->user_id }}</strong>:
+                {{ $message->content }}
+            </li>
+        @empty
+            <li>No hay mensajes en esta sala.</li>
+        @endforelse
+    </ul>
+
+    <h2>Enviar un mensaje</h2>
+    <form action="{{ route('messages.store', $room->id) }}" method="POST">
+        @csrf
+        <textarea name="content" placeholder="Escribe tu mensaje..." required></textarea>
+        <br>
+        <button type="submit">Enviar</button>
+    </form>
+
+    <br>
+    <a href="{{ route('chatrooms.index') }}">Volver al listado de salas</a>
+@endsection
+*/
+
+// -----------------------------------------------------------------------------
+// 7. Resumen
+// -----------------------------------------------------------------------------
+// 1) Crea proyecto
+// 2) Configura .env
+// 3) Crea migraciones y corre php artisan migrate
+// 4) Define modelos (ChatRoom, Message)
+// 5) Crea los controladores ChatRoomController y MessageController
+// 6) Configura rutas en routes/web.php
+// 7) Crea vistas index y show para listar salas y mensajes, y formularios para crear
+//    salas y enviar mensajes.
+// 8) Listo!
+
+// -----------------------------------------------------------------------------
+// FIN
+// -----------------------------------------------------------------------------
+?>
+
