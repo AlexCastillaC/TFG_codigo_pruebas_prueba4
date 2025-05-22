@@ -1,0 +1,351 @@
+1. Configuración Inicial en Laravel
+Instalar Laravel:
+Ejecuta en la terminal:
+bash
+Copiar
+composer create-project laravel/laravel chatapp
+
+Configurar la Base de Datos:
+Actualiza el archivo .env con las credenciales de tu base de datos.
+
+2. Definir la Base de Datos y Modelos
+Migraciones
+Migración para Salas de Chat (chat_rooms)
+php
+Copiar
+// database/migrations/xxxx_xx_xx_create_chat_rooms_table.php
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+class CreateChatRoomsTable extends Migration {
+    public function up() {
+        Schema::create('chat_rooms', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->timestamps();
+        });
+    }
+    public function down() {
+        Schema::dropIfExists('chat_rooms');
+    }
+}
+
+Migración para Mensajes de Chat (chat_messages)
+En este caso se elimina la referencia al usuario autenticado. Se agrega un campo sender para almacenar el nombre del emisor.
+php
+Copiar
+// database/migrations/xxxx_xx_xx_create_chat_messages_table.php
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+class CreateChatMessagesTable extends Migration {
+    public function up() {
+        Schema::create('chat_messages', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('chat_room_id');
+            $table->string('sender'); // Nombre del usuario (no autenticado)
+            $table->text('message');
+            $table->timestamps();
+
+            $table->foreign('chat_room_id')->references('id')->on('chat_rooms')->onDelete('cascade');
+        });
+    }
+    public function down() {
+        Schema::dropIfExists('chat_messages');
+    }
+}
+
+Ejecuta las migraciones con:
+bash
+Copiar
+php artisan migrate
+
+Modelos
+Modelo ChatRoom
+php
+Copiar
+// app/Models/ChatRoom.php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class ChatRoom extends Model {
+    use HasFactory;
+    protected $fillable = ['name'];
+
+    public function messages() {
+        return $this->hasMany(ChatMessage::class);
+    }
+}
+
+Modelo ChatMessage
+Se actualiza para incluir el campo sender en los atributos asignables.
+php
+Copiar
+// app/Models/ChatMessage.php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class ChatMessage extends Model {
+    use HasFactory;
+    protected $fillable = ['chat_room_id', 'sender', 'message'];
+
+    public function room() {
+        return $this->belongsTo(ChatRoom::class);
+    }
+}
+
+
+3. Controlador y Rutas
+Controlador para el Chat
+Se crea un controlador que maneje la visualización de la sala y el envío de mensajes. Al eliminar la autenticación, se espera que el usuario indique su nombre en el formulario.
+php
+Copiar
+// app/Http/Controllers/ChatController.php
+namespace App\Http\Controllers;
+
+use App\Models\ChatMessage;
+use App\Models\ChatRoom;
+use Illuminate\Http\Request;
+
+class ChatController extends Controller {
+    // Muestra la sala de chat y los últimos mensajes
+    public function showRoom($roomId) {
+        $room = ChatRoom::findOrFail($roomId);
+        // Cargamos los últimos 50 mensajes (ordenados cronológicamente)
+        $messages = $room->messages()->latest()->take(50)->get()->reverse();
+        return view('chat.room', compact('room', 'messages'));
+    }
+
+    // Envía un mensaje
+    public function sendMessage(Request $request, $roomId) {
+        $request->validate([
+            'sender'  => 'required|string|max:50',
+            'message' => 'required|string'
+        ]);
+
+        $message = ChatMessage::create([
+            'chat_room_id' => $roomId,
+            'sender'       => $request->sender,
+            'message'      => $request->message,
+        ]);
+
+        return response()->json(['status' => 'Mensaje enviado', 'message' => $message]);
+    }
+}
+
+<!-- resources/views/chat/room.blade.php -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Chat - {{ $room->name }}</title>
+    <link rel="stylesheet" href="/css/chat.css">
+</head>
+<body>
+    <div class="chat-container">
+        <h2>Sala: {{ $room->name }}</h2>
+        <div id="chat-messages" class="chat-messages">
+            @foreach($messages as $message)
+                <div class="message">
+                    <strong>{{ $message->sender }}:</strong>
+                    <span>{{ $message->message }}</span>
+                </div>
+            @endforeach
+        </div>
+        <form id="chat-form">
+            <input type="text" id="sender-input" placeholder="Tu nombre" autocomplete="off" required>
+            <input type="text" id="message-input" placeholder="Escribe tu mensaje..." autocomplete="off" required>
+            <button type="submit">Enviar</button>
+        </form>
+    </div>
+    <script>
+        // Envío de mensajes vía AJAX
+        document.getElementById('chat-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const sender = document.getElementById('sender-input').value;
+            const message = document.getElementById('message-input').value;
+            if(sender.trim() === '' || message.trim() === '') return;
+            fetch("{{ route('chat.send', $room->id) }}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                },
+                body: JSON.stringify({ sender: sender, message: message })
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Agregar el nuevo mensaje al contenedor de mensajes
+                const messagesDiv = document.getElementById('chat-messages');
+                const messageElement = document.createElement('div');
+                messageElement.classList.add('message');
+                messageElement.innerHTML = `<strong>${data.message.sender}:</strong> <span>${data.message.message}</span>`;
+                messagesDiv.appendChild(messageElement);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                document.getElementById('message-input').value = '';
+            });
+        });
+    </script>
+</body>
+</html>
+
+Estilos CSS
+Un ejemplo sencillo de estilos para que la interfaz sea limpia y responsiva.
+css
+Copiar
+/* public/css/chat.css */
+body {
+    font-family: Arial, sans-serif;
+    background: #f2f2f2;
+    margin: 0;
+    padding: 20px;
+}
+.chat-container {
+    max-width: 600px;
+    margin: auto;
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+}
+.chat-messages {
+    height: 400px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+.message {
+    margin-bottom: 8px;
+}
+#chat-form {
+    display: flex;
+    gap: 10px;
+}
+#sender-input, #message-input {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+#chat-form button {
+    padding: 10px 20px;
+    border: none;
+    background: #007BFF;
+    color: #fff;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+1. Modelo (ChatRoom)
+Asegúrate de tener el siguiente modelo para las salas de chat:
+php
+Copiar
+<?php
+// app/Models/ChatRoom.php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class ChatRoom extends Model {
+    use HasFactory;
+    protected $fillable = ['name'];
+
+    public function messages() {
+        return $this->hasMany(ChatMessage::class);
+    }
+}
+
+
+2. Controlador para ChatRooms
+Creamos un controlador para listar y crear las salas de chat:
+php
+Copiar
+<?php
+// app/Http/Controllers/ChatRoomController.php
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use App\Models\ChatRoom;
+
+class ChatRoomController extends Controller {
+    // Muestra la lista de salas de chat
+    public function index() {
+        $rooms = ChatRoom::orderBy('created_at', 'desc')->get();
+        return view('chat.index', compact('rooms'));
+    }
+
+    // Guarda una nueva sala de chat
+    public function store(Request $request) {
+        $request->validate([
+            'name' => 'required|string|max:255'
+        ]);
+
+        ChatRoom::create(['name' => $request->name]);
+
+        return redirect()->route('chat.index')->with('success', 'Chat creado correctamente');
+    }
+}
+
+
+3. Definición de Rutas
+Define en tu archivo routes/web.php las rutas necesarias para mostrar y crear las salas:
+php
+Copiar
+<?php
+// routes/web.php
+
+use App\Http\Controllers\ChatRoomController;
+
+Route::get('/chat', [ChatRoomController::class, 'index'])->name('chat.index');
+Route::post('/chat', [ChatRoomController::class, 'store'])->name('chat.store');
+
+
+4. Vista Blade para Listar y Crear Chats
+Crea el archivo resources/views/chat/index.blade.php con el siguiente contenido:
+html
+Copiar
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Salas de Chat</title>
+    <link rel="stylesheet" href="/css/chat.css">
+</head>
+<body>
+    <div class="chat-container">
+        <h2>Salas de Chat</h2>
+
+        <!-- Mensaje de éxito -->
+        @if(session('success'))
+            <div class="alert success">
+                {{ session('success') }}
+            </div>
+        @endif
+
+        <!-- Lista de salas -->
+        <ul>
+            @foreach($rooms as $room)
+                <li>
+                    <a href="{{ url('/chat/room', $room->id) }}">{{ $room->name }}</a>
+                </li>
+            @endforeach
+        </ul>
+
+        <!-- Formulario para crear nueva sala -->
+        <h3>Crear una nueva sala de chat</h3>
+        <form action="{{ route('chat.store') }}" method="POST">
+            @csrf
+            <input type="text" name="name" placeholder="Nombre del chat" required>
+            <button type="submit">Crear Chat</button>
+        </form>
+    </div>
+</body>
+</html>
+
