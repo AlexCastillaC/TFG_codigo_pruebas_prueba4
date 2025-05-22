@@ -1,0 +1,228 @@
+#vista
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chat Simple</title>
+    <style>
+        .chat-container {
+            display: grid;
+            grid-template-columns: 250px 1fr;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+        }
+        
+        .rooms-panel {
+            background: #2c3e50;
+            color: white;
+            padding: 20px;
+        }
+        
+        .chat-area {
+            padding: 20px;
+            background: #f8f9fa;
+        }
+        
+        .room {
+            padding: 10px;
+            margin: 5px 0;
+            background: #34495e;
+            cursor: pointer;
+        }
+        
+        .message {
+            background: white;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        form {
+            margin-top: 20px;
+            display: grid;
+            gap: 10px;
+        }
+        
+        input, button {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        button {
+            background: #3498db;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        
+        @media (max-width: 768px) {
+            .chat-container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="rooms-panel">
+            <h2>Salas de Chat</h2>
+            <form method="POST" action="/rooms">
+                @csrf
+                <input type="text" name="name" placeholder="Nueva sala" required>
+                <button type="submit">Crear</button>
+            </form>
+            
+            @foreach($rooms as $room)
+                <div class="room">
+                    <a href="/chat/{{ $room->id }}" style="color: white; text-decoration: none;">
+                        {{ $room->name }}
+                    </a>
+                </div>
+            @endforeach
+        </div>
+
+        <div class="chat-area">
+            @if($currentRoom)
+                <div class="messages">
+                    @foreach($messages as $message)
+                        <div class="message">
+                            <strong>{{ $message->username }}</strong>
+                            <p>{{ $message->content }}</p>
+                            <small>{{ $message->created_at->format('H:i') }}</small>
+                        </div>
+                    @endforeach
+                </div>
+
+                <form method="POST" action="/rooms/{{ $currentRoom }}/messages">
+                    @csrf
+                    <input type="text" name="username" placeholder="Tu nombre" required>
+                    <input type="text" name="content" placeholder="Escribe tu mensaje..." required>
+                    <button type="submit">Enviar</button>
+                </form>
+            @else
+                <p>Selecciona una sala para comenzar</p>
+            @endif
+        </div>
+    </div>
+</body>
+</html>
+
+#routes
+<?php
+
+use App\Http\Controllers\ChatController;
+use Illuminate\Support\Facades\Route;
+
+Route::get('/chat/{room?}', [ChatController::class, 'index']);
+Route::post('/rooms', [ChatController::class, 'createRoom']);
+Route::post('/rooms/{room}/messages', [ChatController::class, 'sendMessage']);
+
+#Controlador
+<?php
+namespace App\Http\Controllers;
+
+use App\Models\Room;
+use App\Models\Message;
+use Illuminate\Http\Request;
+
+class ChatController extends Controller
+{
+    public function index($roomId = null)
+    {
+        return view('chat', [
+            'rooms' => Room::all(),
+            'messages' => $roomId ? Message::where('room_id', $roomId)->latest()->get() : [],
+            'currentRoom' => $roomId
+        ]);
+    }
+
+    public function createRoom(Request $request)
+    {
+        $request->validate(['name' => 'required|unique:rooms,name']);
+        Room::create($request->only('name'));
+        return redirect('/chat');
+    }
+
+    public function sendMessage(Request $request, $roomId)
+    {
+        $request->validate([
+            'username' => 'required',
+            'content' => 'required'
+        ]);
+        
+        Message::create([
+            'room_id' => $roomId,
+            'username' => $request->username,
+            'content' => $request->content
+        ]);
+        
+        return redirect("/chat/$roomId");
+    }
+}
+
+#modelos
+<?php
+// app/Models/Room.php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Room extends Model
+{
+    protected $fillable = ['name'];
+    
+    public function messages()
+    {
+        return $this->hasMany(Message::class);
+    }
+}
+
+// app/Models/Message.php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Message extends Model
+{
+    protected $fillable = ['room_id', 'username', 'content'];
+    
+    public function room()
+    {
+        return $this->belongsTo(Room::class);
+    }
+}
+
+#migración
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+class CreateChatTables extends Migration
+{
+    public function up()
+    {
+        Schema::create('rooms', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->timestamps();
+        });
+
+        Schema::create('messages', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('room_id')->constrained();
+            $table->string('username');
+            $table->text('content');
+            $table->timestamps();
+        });
+    }
+
+    public function down()
+    {
+        Schema::dropIfExists('messages');
+        Schema::dropIfExists('rooms');
+    }
+}
+
