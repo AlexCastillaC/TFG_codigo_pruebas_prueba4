@@ -1,0 +1,240 @@
+#vistas
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Lista de ChatRooms</title>
+</head>
+<body>
+    <h1>Chat Rooms</h1>
+    <a href="{{ route('chatrooms.create') }}">Crear una nueva habitación</a>
+
+    @foreach ($chatRooms as $chatRoom)
+    <div>
+        <h2>{{ $chatRoom->name }}</h2>
+        <!-- Asegúrate de usar 'chatRoom' en el array asociativo -->
+        <a href="{{ route('chatrooms.messages', ['chatRoom' => $chatRoom]) }}">Ver mensajes</a>
+    </div>
+@endforeach
+</body>
+</html>
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ver Mensajes</title>
+</head>
+<body>
+    <h1>Mensajes en: {{ $chatRoom->name }}</h1>
+
+    @if (session('success'))
+        <p>{{ session('success') }}</p>
+    @endif
+
+    <form method="POST" action="{{ route('messages.store', $chatRoom) }}">
+        @csrf
+
+        <label for="message">Nuevo Mensaje:</label>
+        <textarea name="message" id="message" required></textarea>
+
+        <button type="submit">Enviar</button>
+    </form>
+
+    <h2>Mensajes Anteriores:</h2>
+    <ul>
+        @foreach ($chatRoom->messages as $message)
+            <li>{{ $message->message }}</li>
+        @endforeach
+    </ul>
+</body>
+</html>
+
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Nueva Habitación de Chat</title>
+</head>
+<body>
+    <h1>Crear nueva habitación</h1>
+
+    <form method="POST" action="{{ route('chatrooms.store') }}">
+        @csrf
+
+        <label for="name">Nombre:</label>
+        <input type="text" name="name" id="name" required>
+
+        <button type="submit">Crear</button>
+    </form>
+</body>
+</html>
+
+#migraciones
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('messages', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('chat_room_id')->constrained()->onDelete('cascade');
+            $table->text('message');
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('messages');
+    }
+};
+
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('chat_rooms', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('chat_rooms');
+    }
+};
+
+#Modelos
+<?php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Message extends Model
+{
+    use HasFactory;
+
+    protected $fillable = ['chat_room_id', 'content'];
+
+    public function chatRoom()
+    {
+        return $this->belongsTo(ChatRoom::class);
+    }
+}
+
+<?php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class ChatRoom extends Model
+{
+    use HasFactory;
+
+    protected $fillable = ['name'];
+
+    public function messages()
+    {
+        return $this->hasMany(Message::class);
+    }
+}
+
+#Controladores
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+
+
+use App\Models\Message;
+use App\Models\ChatRoom;
+
+class MessageController extends Controller
+{
+    public function store(Request $request, ChatRoom $chatRoom)
+    {
+        $validatedData = $request->validate([
+            'message' => 'required|string|max:1000',
+        ]);
+
+        $message = new Message();
+        $message->chat_room_id = $chatRoom->id;
+        $message->message = $validatedData['message'];
+        // En una aplicación real, también podrías querer almacenar quién envió el mensaje
+        $message->save();
+
+        return back()->with('success', 'Mensaje enviado.');
+    }
+}
+
+
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+
+use App\Models\ChatRoom;
+
+class ChatRoomController extends Controller
+{
+    public function index()
+    {
+        $chatRooms = ChatRoom::all();
+        return view('chatrooms.index', compact('chatRooms'));
+    }
+
+    public function create()
+    {
+        return view('chatrooms.create');
+    }
+
+    public function store(Request $request)
+    {
+        $validatedData = $request->validate([
+            'name' => 'required|string|max:255',
+        ]);
+
+        $chatRoom = ChatRoom::create($validatedData);
+        return redirect()->route('chatrooms.show', $chatRoom);
+    }
+
+    public function show(ChatRoom $chatRoom)
+    {
+        return view('chatrooms.show', compact('chatRoom'));
+    }
+}
+
